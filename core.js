@@ -122,6 +122,50 @@
   ];
   var DOORS = ["BRIDGE", "ATRIUM", "ENGINEERING", "DOCKING BAY", "CROWN OF CORELLIA", "SUBLIGHT LOUNGE", "CARGO HOLD", "BRIG", "CLIMATE SIMULATOR"];
 
+  function inWin(b, t) { return b.windows.some(function (w) { return t >= w[0] && t <= w[1]; }); }
+  function genLog(r3) {
+    var splitIds = shuffle(r3, CREW.map(function (c) { return c.id; })).slice(0, 2);
+    var board = CREW.map(function (c) {
+      var start = 19 * 60 + 5 * ri(r3, 0, 14), windows;
+      if (splitIds.indexOf(c.id) >= 0) {
+        var a = 5 * ri(r3, 5, 8), brk = 5 * ri(r3, 3, 5), b2 = 5 * ri(r3, 5, 9);
+        windows = [[start, start + a], [start + a + brk, start + a + brk + b2]];
+      } else windows = [[start, start + 5 * ri(r3, 12, 19)]];
+      return { id: c.id, name: c.name, duty: c.duty, role: c.role, windows: windows,
+               start: windows[0][0], end: windows[windows.length - 1][1] };
+    });
+    var forger = pick(r3, board);
+    var used = {};
+    function uniqT(t) { while (used[t]) t++; used[t] = 1; return t; }
+    function offDoor(b) { return pick(r3, DOORS.filter(function (d) { return d !== b.duty; })); }
+    function offDutyTime(b) {
+      if (b.windows.length > 1 && r3() < 0.7) return ri(r3, b.windows[0][1] + 4, b.windows[1][0] - 6); // in the break
+      return r3() < 0.5 ? b.start - ri(r3, 4, 15) : b.end + ri(r3, 4, 15);                            // just outside
+    }
+    var entries = [];
+    board.forEach(function (b) { // arrivals at their own post at the start of each shift
+      b.windows.forEach(function (w) { entries.push({ t: uniqT(w[0] + ri(r3, -6, 6)), door: b.duty, who: b.id }); });
+    });
+    board.forEach(function (b) { // off-duty, off-post decoys
+      if (b !== forger || r3() < 0.6) entries.push({ t: uniqT(offDutyTime(b)), door: offDoor(b), who: b.id });
+    });
+    var fw = forger.windows.filter(function (w) { return w[1] - w[0] >= 25; });
+    fw = fw.length ? pick(r3, fw) : forger.windows[0];
+    entries.push({ t: uniqT(ri(r3, fw[0] + 8, fw[1] - 8)), door: offDoor(forger), who: forger.id, forged: true });
+    entries.sort(function (a, b) { return a.t - b.t; });
+    entries.forEach(function (e, i) { e.n = i; });
+    var byId = {}; board.forEach(function (b) { byId[b.id] = b; });
+    var bad = entries.filter(function (e) { return inWin(byId[e.who], e.t) && e.door !== byId[e.who].duty; });
+    var f = entries.filter(function (e) { return e.forged; })[0];
+    if (bad.length !== 1 || bad[0] !== f) return null; // retry with the next sub-seed
+    for (var i = 0; i < entries.length; i++) for (var j = i + 1; j < entries.length; j++) {
+      var x = entries[i], y = entries[j]; // same person at two different doors needs a believable gap
+      if (x.who === y.who && x.door !== y.door && Math.abs(x.t - y.t) < 6) return null;
+    }
+    entries.forEach(function (e) { delete e.forged; });
+    return { board: board, entries: entries, forged: f.n, answer: forger.id, window: [f.t - 20, f.t + 20] };
+  }
+
   // ---- per-card puzzle generation ------------------------------------------
   function gen(serial) {
     var P = { serial: serial };
@@ -143,41 +187,20 @@
     var plain = "FIRST ORDER PRIORITY / LT CROY TO ALL PATROLS / " + pick(r2, ORDERS) + " / AUTH " + word;
     P.drift = { shift: s, plain: plain, cipher: caesar(plain, s), answer: word };
 
-    // 3 · THE FORGED LOG — duty board vs. door log; exactly one impossible entry
-    var r3 = rng(serial + "|log");
-    var board = CREW.map(function (c) {
-      var start = 19 * 60 + 5 * ri(r3, 0, 16);
-      var len = 60 + 5 * ri(r3, 0, 6);
-      return { id: c.id, name: c.name, duty: c.duty, role: c.role, start: start, end: start + len };
-    });
-    var forger = pick(r3, board);
-    var used = {};
-    function uniqT(t) { while (used[t]) t++; used[t] = 1; return t; }
-    var entries = [];
-    board.forEach(function (b) { // arrivals at their own duty post, near shift start
-      entries.push({ t: uniqT(b.start + ri(r3, -8, 8)), door: b.duty, who: b.id });
-    });
-    shuffle(r3, board.filter(function (b) { return b !== forger; })).slice(0, 3).forEach(function (b) { // off-duty decoys
-      var before = r3() < 0.5;
-      var t = before ? b.start - ri(r3, 10, 35) : b.end + ri(r3, 10, 35);
-      var door = pick(r3, DOORS.filter(function (d) { return d !== b.duty; }));
-      entries.push({ t: uniqT(t), door: door, who: b.id });
-    });
-    var ft = uniqT(ri(r3, forger.start + 18, forger.end - 18));
-    var fdoor = pick(r3, DOORS.filter(function (d) { return d !== forger.duty; }));
-    entries.push({ t: ft, door: fdoor, who: forger.id, forged: true });
-    entries.sort(function (a, b) { return a.t - b.t; });
-    entries.forEach(function (e, i) { e.n = i; });
-    var forgedIdx = entries.filter(function (e) { return e.forged; })[0].n;
-    entries.forEach(function (e) { delete e.forged; });
-    P.log = { board: board, entries: entries, forged: forgedIdx, answer: forger.id, window: [ft - 20, ft + 20] };
+    // 3 · THE FORGED LOG — duty board vs. door log; exactly one impossible entry.
+    // Two crew work split shifts (with a break), every off-duty decoy sits close to a shift edge
+    // or inside a break, and the forger may also have a legit off-duty entry — so you can't just
+    // spot "the person who left their post".
+    var logP = null;
+    for (var attempt = 0; attempt < 50 && !logP; attempt++) logP = genLog(rng(serial + "|log|" + attempt));
+    P.log = logP;
 
     // 4 · KEYED LOCK — Vigenère keyed by the cloned credential's name
     var r4 = rng(serial + "|keyed");
     var glyphs = shuffle(r4, LETTERS.split("")).slice(0, 6); // lock glyph set; glyphs[0] goes first
     var first = glyphs[0];
     var kplain = AUREBESH[LETTERS.indexOf(first)] + " GOES FIRST";
-    P.keyed = { key: forger.id, plain: kplain, cipher: vigenere(kplain, forger.id, +1), answer: letters(kplain) };
+    P.keyed = { key: P.log.answer, plain: kplain, cipher: vigenere(kplain, P.log.answer, +1), answer: letters(kplain) };
 
     // 5 · LOCKBREAKER — Mastermind, slot 1 known from Keyed Lock
     P.lock = { set: shuffle(r4, glyphs), first: first };
@@ -201,7 +224,7 @@
   /** Rule check used by tests: an entry is impossible if it falls inside its owner's duty window at a different door. */
   function isImpossible(P, e) {
     var b = P.log.board.filter(function (x) { return x.id === e.who; })[0];
-    return e.t >= b.start && e.t <= b.end && e.door !== b.duty;
+    return inWin(b, e.t) && e.door !== b.duty;
   }
 
   var api = {
@@ -209,7 +232,7 @@
     cyrb53: cyrb53, pinHash: pinHash, checkPin: checkPin,
     makeSerial: makeSerial, normSerial: normSerial, recruitCode: recruitCode, normCode: normCode, verify: verify,
     gen: gen, lockCombo: lockCombo, scoreGuess: scoreGuess, isImpossible: isImpossible,
-    letters: letters, shiftChar: shiftChar, caesar: caesar, vigenere: vigenere, hhmm: hhmm
+    letters: letters, shiftChar: shiftChar, caesar: caesar, vigenere: vigenere, hhmm: hhmm, inWin: inWin
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.VOX = api;

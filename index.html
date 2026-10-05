@@ -94,6 +94,7 @@ input.txt:focus{border-color:var(--cyan)}
 .strip .lab{font-size:9px;letter-spacing:.08em;color:var(--muted);text-align:left;display:flex;align-items:center}
 .strip .p{color:#fff;background:#0f1924;padding:6px 0;border-radius:2px;font-weight:700}
 .strip .c{color:var(--amber);background:#1a1307;padding:6px 0;border-radius:2px;font-weight:700}
+.strip .c.hit{background:var(--amber);color:#000;box-shadow:0 0 0 2px #fff inset}
 .strip .sp{grid-column:1/-1;height:6px}
 .dial{display:flex;align-items:center;gap:10px;margin-top:12px}
 .dial button{flex:none;width:52px;padding:12px 0;font-size:20px}
@@ -115,6 +116,9 @@ table.duty td.w{color:var(--cyan);white-space:nowrap;text-align:right}
 .log button.sel{border-color:var(--amber);background:#1a1307}
 .log button.sel .d{color:var(--amber)}
 .log button.hit{border-color:var(--red);background:#2a0d0d}
+p.rule{font-size:14px;line-height:1.6;margin:0}
+p.rule b{color:var(--amber)}
+table.duty td.w .brk{font-size:10px;color:var(--muted);letter-spacing:.1em}
 ol.steps{margin:0;padding-left:20px;font-size:14px;line-height:1.55}
 ol.steps li{margin:6px 0}
 ol.steps b{color:var(--amber)}
@@ -126,9 +130,11 @@ ol.steps b{color:var(--amber)}
 .kword{display:flex;gap:4px}
 .kcell{display:flex;flex-direction:column;align-items:center;width:38px}
 .kcell .g{font-family:"AurebeshNL",monospace;font-size:26px;color:var(--amber);line-height:1;height:28px}
-.kcell .s{font-size:12px;color:var(--muted);margin-top:2px}
-.kcell .k{font-size:12px;color:var(--cyan);font-weight:700;height:30px;line-height:1.15;text-align:center}
+.kcell .s{font-size:17px;color:#fff;font-weight:700;margin-top:3px;line-height:1}
+.kcell .k{font-size:10px;color:var(--cyan);height:30px;line-height:1.3;text-align:center;margin-top:3px;letter-spacing:.02em}
 .kcell .k small{display:block;font-size:10px;color:var(--cyan-dim)}
+.klegend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+.klegend b{color:#fff}.klegend i{color:var(--cyan);font-style:normal}
 .kcell input{width:36px;height:42px;margin-top:3px;text-align:center;font:700 20px var(--mono);color:#fff;background:#060b12;border:1px solid var(--line);border-bottom:2px solid var(--cyan-dim);border-radius:3px;outline:none;text-transform:uppercase;padding:0;caret-color:var(--cyan)}
 .kcell input:focus{border-color:var(--amber);box-shadow:0 0 0 2px rgba(255,179,71,.2)}
 .kcell.cur .g{text-shadow:0 0 12px rgba(255,179,71,.6)}
@@ -248,14 +254,14 @@ function solvedAndNext(stage, html){
 
 /* ---------- Aurebesh / strip helpers ---------- */
 function aur(s){ return '<span class="aur">'+esc(s)+'</span>'; }
-function stripHTML(k){
+function stripHTML(k, hit){
   var L = V.LETTERS, h = "";
   [0,13].forEach(function(o, blk){
     if (blk) h += '<div class="sp"></div>';
     h += '<div class="lab">CLEAN</div>';
     for (var i=o;i<o+13;i++) h += '<div class="p">'+L[i]+'</div>';
     h += '<div class="lab">CODED</div>';
-    for (i=o;i<o+13;i++) h += '<div class="c">'+V.shiftChar(L[i],k)+'</div>';
+    for (i=o;i<o+13;i++){ var cc = V.shiftChar(L[i],k); h += '<div class="c'+(cc===hit?' hit':'')+'">'+cc+'</div>'; }
   });
   return '<div class="strip">'+h+'</div>';
 }
@@ -386,7 +392,7 @@ function stDrift(){
 /* ---- 3 · THE FORGED LOG ---- */
 function stLog(){
   var L = P.log, sel = null;
-  var duty = L.board.map(function(b){ return '<tr><td class="n">'+b.name+'<small>'+b.role+' · '+b.duty+'</small></td><td class="w">'+V.hhmm(b.start)+'–'+V.hhmm(b.end)+'</td></tr>'; }).join("");
+  var duty = L.board.map(function(b){ return '<tr><td class="n">'+b.name+'<small>'+b.role+' · '+b.duty+'</small></td><td class="w">'+b.windows.map(function(w){ return V.hhmm(w[0])+'–'+V.hhmm(w[1]); }).join('<br><span class="brk">break</span><br>')+'</td></tr>'; }).join("");
   var names = {}; L.board.forEach(function(b){ names[b.id]=b.name; });
   var rows = L.entries.map(function(e){ return '<button data-n="'+e.n+'"><span class="t">'+V.hhmm(e.t)+'</span><span class="d">'+e.door+'</span><span class="w">credential: '+names[e.who]+'</span></button>'; }).join("");
   app.innerHTML =
@@ -397,19 +403,15 @@ function stLog(){
       '<p>Below are two records: the <b>duty board</b> (where each crew member had to be, and when) and the <b>door log</b> (which credential opened which door, and when). One door-log entry is fake. Find it, tap it, and flag it.</p>'+
       '<p>Flag the wrong one and ship security sweeps the logs. You\'ll wait. So don\'t guess.</p>')+
     intel()+
-    '<div class="panel"><h2>HOW TO SPOT THE FAKE</h2><ol class="steps">'+
-      '<li>Pick a door-log entry and find that person on the duty board.</li>'+
-      '<li>Was the entry\'s time <b>inside their duty hours</b>? If not, they were off duty and free to go anywhere, so that entry is fine.</li>'+
-      '<li>If it <i>was</i> during their duty hours, did it open <b>their own post</b>? If yes, it\'s fine. If it opened <b>some other door</b>, they couldn\'t have been there, because they were stuck at their post. Someone cloned their credential.</li>'+
-      '</ol><p class="note">Exactly one entry fails step 3. Example: if someone is on duty in the Galley 18:00–19:00, their credential opening the Brig at 18:30 is impossible, but opening the Brig at 19:20 is fine.</p></div>'+
-    '<div class="panel"><h2>HALCYON · EVENING DUTY BOARD</h2><table class="duty">'+duty+'</table><p class="note">On duty means at that post for the whole window, start and end times included.</p></div>'+
+    '<div class="panel"><h2>THE RULE</h2><p class="rule">During their duty hours, crew are <b>stuck at their post</b>. Off duty (before, after or on a break) they can go <b>anywhere</b>. So a fake entry is a credential opening <b>a door other than its owner\'s post, while its owner is on duty</b>.</p><p class="note">Exactly one entry breaks the rule. Shift start and end times count as on duty.</p></div>'+
+    '<div class="panel"><h2>HALCYON · EVENING DUTY BOARD</h2><table class="duty">'+duty+'</table></div>'+
     '<div class="panel"><h2>SECURITY · DOOR LOG</h2><div class="log" id="log">'+rows+'</div>'+
     '<div class="lockout" id="lo"></div><div class="fb" id="fb"></div><button class="full" id="chk" style="margin-top:8px" disabled>FLAG THIS ENTRY ▸</button>'+hintBlock("h")+
     '<button class="ghost full" id="hintBtn" style="margin-top:10px"></button></div><div id="after"></div>';
   var btns = document.querySelectorAll("#log button");
   [].forEach.call(btns, function(b){ b.onclick = function(){ if (S.solved.log) return; [].forEach.call(btns,function(x){x.classList.remove("sel");}); b.classList.add("sel"); sel=+b.dataset.n; refresh(); }; });
   wireHints("log", [
-    'Shortcut: skip every entry where the door matches that person\'s own post. Those can never be fake. For the few that are left, check whether the time falls inside that person\'s duty hours.',
+    'Skip every entry where the door is that person\'s own post. Those can never be fake. For each entry that\'s left, check the time against that person\'s shift, and watch for breaks.',
     'Look closely at the entries between <b>'+V.hhmm(L.window[0])+'</b> and <b>'+V.hhmm(L.window[1])+'</b>.'
   ]);
   function locked(){ return (S.logLockUntil||0) > Date.now(); }
@@ -454,11 +456,12 @@ function stKeyed(){
     comm("ZORIN VOX","DATAWORX",
       '<p>Zorin. I built this one.</p>'+
       '<p>Same drift you used with I\'an, with one difference: <b>every letter drifts a different distance</b>. A key word sets the distances. Its letters repeat under the message, and each key letter is a drift: <b>A = 0, B = 1, C = 2</b> … all the way to <b>Z = 25</b>.</p>'+
-      '<p>The key is the name An\'tho had you dig out of the log. Type it in. Then work the message letter by letter. <b>Tap any box</b> and the strip at the bottom sets itself to that letter\'s drift.</p>'+
+      '<p>The key is the name An\'tho had you dig out of the log. Type it in. Then work the message letter by letter. <b>Tap any box</b> and the strip at the bottom sets itself to that letter\'s drift and lights up the coded letter. Read the clean letter above it.</p>'+
+      '<p>Careful: the key letter only tells you the <b>distance</b>. The letter you decode is the <b>white coded letter</b>.</p>'+
       '<p>I don\'t care how long it takes. I care that you finish.</p>')+
     intel()+
     '<div class="panel"><h2>KEY</h2><input class="txt" id="key" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="TYPE THE KEY"></div>'+
-    '<div class="panel"><h2>LOCKED MESSAGE</h2><div class="kmsg" id="msg">'+html+'</div>'+
+    '<div class="panel"><h2>LOCKED MESSAGE</h2><div class="klegend"><span><b>WHITE</b> = coded letter (decode this)</span><span><i>key +N</i> = how far it drifted</span></div><div class="kmsg" id="msg">'+html+'</div>'+
     '<div class="fb" id="fb"></div><button class="full" id="chk" style="margin-top:8px">DECODE ▸</button>'+hintBlock("h")+
     '<button class="ghost full" id="hintBtn" style="margin-top:10px"></button></div><div id="after"></div>'+
     '<div class="stripbox" id="sb"><div class="cap"><span id="cap">TAP A LETTER BOX</span><span>DRIFT <b id="dk">–</b></span></div><div id="strip"></div></div>';
@@ -471,16 +474,17 @@ function stKeyed(){
   function kAt(i){ var k=key(); return k ? V.LETTERS.indexOf(k[i%k.length]) : -1; }
   function paint(){
     var k = key();
-    [].forEach.call(cells, function(c,i){ var d = c.querySelector(".k"); d.innerHTML = k ? k[i%k.length]+'<small>+'+kAt(i)+'</small>' : ""; });
+    [].forEach.call(cells, function(c,i){ var d = c.querySelector(".k"); d.innerHTML = k ? 'key '+k[i%k.length]+'<small>+'+kAt(i)+'</small>' : ""; });
     focusCell(cur, true);
   }
   function focusCell(i, noFocus){
     cur = i;
     [].forEach.call(cells, function(c,j){ c.classList.toggle("cur", j===i); });
     var kk = kAt(i);
-    $("#cap").textContent = kk<0 ? "TYPE THE KEY FIRST" : "LETTER "+(i+1)+" · KEY "+key()[i%key().length];
+    var coded = K.cipher.replace(/[^A-Z]/g,"")[i];
+    $("#cap").textContent = kk<0 ? "TYPE THE KEY FIRST" : "FIND CODED "+coded+" ON THE AMBER ROW";
     $("#dk").textContent = kk<0 ? "–" : kk;
-    $("#strip").innerHTML = stripHTML(kk<0?0:kk);
+    $("#strip").innerHTML = stripHTML(kk<0?0:kk, kk<0?null:coded);
     if (!noFocus) inputs[i].focus();
   }
   function draft(){ S.keyDraft = [].map.call(inputs, function(x){ return x.value.toUpperCase(); }); save(); }
@@ -492,7 +496,7 @@ function stKeyed(){
   });
   paint();
   wireHints("keyed", [
-    'Key = the cloned credential from The Forged Log (it\'s in your Datapad above). Under each glyph you\'ll see a key letter and its drift. Tap a box, find the amber coded letter on the strip\'s CODED row, and read the CLEAN letter above it.',
+    'Key = the cloned credential from The Forged Log (it\'s in your Datapad above). Under each glyph is its white coded letter, then the blue key letter and drift. Decode the <b>white</b> letter, not the key letter. If everything comes out as A, you\'re looking up the key letter. Tap a box, find the lit-up letter on the CODED row, and read the CLEAN letter above it.',
     'Key: <b>'+K.key+'</b>. The first word decodes to <b>'+K.plain.split(" ")[0]+'</b>, and the message is about the lock you\'ll face next.'
   ]);
   function chk(){
