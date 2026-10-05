@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#05080d">
+<meta name="robots" content="noindex">
+<title>Vox Staff · Code Check</title>
+<style>
+:root{--bg:#05080d;--panel:#0b1119;--line:#1d2a3a;--amber:#ffb347;--cyan:#5fe3ff;--cyan-dim:#1e5f6e;--text:#d9e3ee;--muted:#8696a8;--red:#ff6b6b;--green:#5dff9a;
+--mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono","Courier New",monospace}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono)}
+.wrap{max-width:520px;margin:0 auto;padding:16px 16px 40px}
+h1{font-size:15px;letter-spacing:.2em;color:var(--amber);margin:6px 0 2px}
+.sub{font-size:11px;letter-spacing:.16em;color:var(--muted);margin-bottom:16px}
+label{display:block;font-size:11px;letter-spacing:.18em;color:var(--muted);margin:14px 0 6px}
+input{width:100%;height:56px;font:700 22px var(--mono);letter-spacing:.12em;text-align:center;color:#fff;background:#060b12;border:1px solid var(--line);border-bottom:2px solid var(--cyan-dim);border-radius:4px;outline:none;text-transform:uppercase}
+input:focus{border-color:var(--cyan)}
+button{font:700 15px var(--mono);letter-spacing:.16em;padding:15px 18px;width:100%;margin-top:12px;background:transparent;color:var(--amber);border:1px solid var(--amber);border-radius:4px;cursor:pointer}
+button.ghost{color:var(--muted);border-color:var(--line);font-size:12px;padding:12px}
+.res{margin-top:16px;border-radius:6px;padding:18px 14px;text-align:center;display:none}
+.res.on{display:block}
+.res b{display:block;font-size:30px;letter-spacing:.2em}
+.res span{display:block;margin-top:8px;font-size:14px;line-height:1.5}
+.res.ok{border:2px solid var(--green);color:var(--green);background:rgba(93,255,154,.06)}
+.res.bad{border:2px solid var(--red);color:var(--red);background:rgba(255,107,107,.06)}
+.res.warn{border:2px solid var(--amber);color:var(--amber);background:rgba(255,179,71,.06)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;margin-top:22px}
+.panel h2{font-size:11px;letter-spacing:.2em;color:var(--muted);margin:0 0 8px}
+.panel p{font-size:13px;line-height:1.55;color:var(--muted);margin:6px 0}
+.panel p b{color:var(--text)}
+#list{font-size:13px;line-height:1.8;color:var(--text);word-break:break-all}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VOX STAFF · CODE CHECK</h1>
+  <div class="sub">RECRUIT CHALLENGE · DO NOT SHARE THIS PAGE</div>
+
+  <label for="ser">SERIAL ON THEIR CARD</label>
+  <input id="ser" placeholder="VBD-XXXX-X" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  <label for="code">CODE ON THEIR SCREEN</label>
+  <input id="code" placeholder="XXX-XXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  <button id="chk">CHECK ▸</button>
+  <div class="res" id="res"></div>
+  <button class="ghost" id="mark" style="display:none">MARK THIS CARD REDEEMED (THIS PHONE)</button>
+
+  <div class="panel">
+    <h2>HOW TO REDEEM</h2>
+    <p>1. Type the serial <b>from the physical card</b>, not from their phone screen.</p>
+    <p>2. Type the code from their phone. Dashes and capitals don't matter.</p>
+    <p>3. <b>VALID</b>? Hand over the swag, then <b>punch, sign or keep the card</b>. That's what stops a second redemption. This phone also remembers what it marked, but the other phones don't.</p>
+  </div>
+
+  <div class="panel">
+    <h2>STUCK OR GLITCHED RECRUIT</h2>
+    <p>If someone legitimately finished but their phone died or lost progress, you can look up their card's code here (PIN required). In the recruit app itself, holding the serial chip in the top-right for 2 seconds skips the current test with the same PIN.</p>
+    <button class="ghost" id="issue">LOOK UP CODE FOR THIS SERIAL (PIN)</button>
+  </div>
+
+  <div class="panel">
+    <h2>REDEEMED ON THIS PHONE (<span id="cnt">0</span>)</h2>
+    <div id="list"></div>
+  </div>
+</div>
+<script src="core.js"></script>
+<script>
+(function(){
+var V = window.VOX, $ = function(s){ return document.querySelector(s); };
+var KEY = "vox-staff-redeemed", mem = [];
+function getR(){ try{ return JSON.parse(localStorage.getItem(KEY)||"[]"); }catch(e){ return mem; } }
+function setR(a){ mem=a; try{ localStorage.setItem(KEY, JSON.stringify(a)); }catch(e){} }
+function list(){
+  var r = getR(); $("#cnt").textContent = r.length;
+  $("#list").textContent = r.length ? r.map(function(x){ return x.s+" · "+new Date(x.t).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"}); }).join("\n") : "None yet.";
+  $("#list").style.whiteSpace="pre-line";
+}
+function show(cls, big, small){ var r=$("#res"); r.className="res on "+cls; r.innerHTML="<b>"+big+"</b><span>"+small+"</span>"; }
+var lastOk = null;
+$("#chk").onclick = function(){
+  $("#mark").style.display="none"; lastOk=null;
+  var res = V.verify($("#ser").value, $("#code").value);
+  if (res.reason==="serial"){ show("bad","BAD SERIAL","That isn't a real recruit card serial. Check for a typo (no O, 0, I, 1 or L on these cards)."); return; }
+  if (!res.ok){ show("bad","FORGED","This code was not earned on card "+res.serial+". It may be copied from someone else's card, or mistyped."); return; }
+  var prior = getR().filter(function(x){ return x.s===res.serial; })[0];
+  if (prior){ show("warn","ALREADY REDEEMED","Valid code, but this phone already marked "+res.serial+" redeemed ("+new Date(prior.t).toLocaleString([], {weekday:"short",hour:"numeric",minute:"2-digit"})+")."); return; }
+  show("ok","VALID","Card "+res.serial+" earned this code. Welcome them to the crew!");
+  lastOk = res.serial; $("#mark").style.display="block";
+};
+$("#mark").onclick = function(){ if(!lastOk) return; var r=getR(); r.push({s:lastOk,t:Date.now()}); setR(r); list(); $("#mark").style.display="none"; show("ok","REDEEMED","Card "+lastOk+" marked. Punch or keep the card."); };
+$("#issue").onclick = function(){
+  var s = V.normSerial($("#ser").value);
+  if (!s){ show("bad","BAD SERIAL","Type a valid card serial in the first box first."); return; }
+  var pin = prompt("Staff PIN:");
+  if (!pin) return;
+  if (!V.checkPin(pin)){ show("bad","WRONG PIN",""); return; }
+  show("warn", V.recruitCode(s), "Code for card "+s+". Only use this for a recruit you know finished.");
+};
+["#ser","#code"].forEach(function(id){ $(id).onkeydown=function(e){ if(e.key==="Enter") $("#chk").click(); }; });
+list();
+})();
+</script>
+</body>
+</html>
